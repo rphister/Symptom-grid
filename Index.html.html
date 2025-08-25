@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Symptom Grid (Single File)</title>
+<style>
+:root{
+  --bg:#ffffff;
+  --fg:#0f172a;
+  --muted:#64748b;
+  --border:#cbd5e1;
+  --accent:#0ea5e9;
+  --danger:#ef4444;
+}
+*{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+body{ margin:0; font-family:-apple-system, system-ui, Helvetica, Arial, sans-serif; background:var(--bg); color:var(--fg); }
+header{ position:sticky; top:0; background:var(--bg); border-bottom:1px solid var(--border); padding:12px; z-index:10; }
+h1{ margin:0 0 6px 0; font-size:20px; }
+.controls{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+label{ font-size:14px; color:var(--muted); }
+input[type=date]{ padding:8px; border:1px solid var(--border); border-radius:8px; font-size:16px; }
+button{ padding:8px 12px; border-radius:8px; border:1px solid var(--border); background:#f8fafc; font-size:14px; }
+button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+button.secondary{ background:#eef2f7; }
+button.danger{ background:#fee2e2; border-color:#fecaca; color:#b91c1c; }
+main{ padding:12px; }
+.grid { width:100%; border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+.grid .row, .grid .head { display:grid; grid-template-columns: 160px repeat(4, 1fr); }
+.grid .head > div { background:#f8fafc; color:var(--muted); font-weight:600; padding:10px; border-right:1px solid var(--border); font-size:13px; }
+.grid .head > div:last-child { border-right:none; }
+.grid .row > div { padding:10px; border-right:1px solid var(--border); border-top:1px solid var(--border); min-height:72px; }
+.grid .row > div:last-child { border-right:none; }
+.grid .row .area { background:#fafafa; font-weight:600; font-size:14px; }
+.cell { display:flex; flex-direction:column; gap:6px; height:100%; }
+.cell .line1 { display:flex; justify-content:space-between; align-items:center; font-size:14px; }
+.badge { font-size:12px; color:var(--muted); }
+.note { font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tap { outline:2px solid transparent; border-radius:8px; transition:outline-color .15s; }
+.tap:active { outline-color: var(--accent); }
+/* Bottom sheet */
+.backdrop { position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; }
+.sheet { position:fixed; left:0; right:0; bottom:0; background:var(--bg); border-top-left-radius:16px; border-top-right-radius:16px; box-shadow:0 -10px 28px rgba(0,0,0,.25); padding:12px; max-height:85vh; overflow:auto; display:none; }
+.sheet.show, .backdrop.show { display:block; }
+.sheet-header{ display:flex; justify-content:space-between; align-items:center; padding:4px 4px 10px 4px; }
+.sheet-title{ font-weight:700; }
+.form{ display:flex; flex-direction:column; gap:12px; }
+.form-row{ display:flex; gap:12px; align-items:center; }
+.form-row label{ width:130px; color:var(--fg); }
+.form-row textarea, .form-row select{ flex:1; font-size:16px; padding:8px; border:1px solid var(--border); border-radius:8px; }
+.form-row input[type=range]{ flex:1; }
+.form-row output{ min-width:28px; text-align:right; color:var(--muted); }
+.form-row.toggle { justify-content:space-between; }
+.sheet-actions{ display:flex; gap:8px; justify-content:flex-end; padding-top:8px; }
+.footer-hint { color:var(--muted); font-size:12px; padding:8px 2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Symptom Grid</h1>
+  <div class="controls">
+    <label for="date">Date</label>
+    <input type="date" id="date" />
+    <button id="exportCsv" class="secondary">Export CSV</button>
+    <button id="resetDay" class="danger">Reset Day</button>
+  </div>
+</header>
+<main>
+  <div class="grid" id="grid">
+    <div class="head">
+      <div>Symptom / Time</div>
+      <div>Morning</div>
+      <div>Midday</div>
+      <div>Evening</div>
+      <div>Night</div>
+    </div>
+  </div>
+  <div class="footer-hint">Tip: Tap any cell to edit. Your data is saved on this device only.</div>
+</main>
+<div id="backdrop" class="backdrop"></div>
+<div id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="sheet-header">
+    <div id="sheetTitle" class="sheet-title">Edit Entry</div>
+    <button id="closeSheet" class="secondary">Close</button>
+  </div>
+  <form id="form" class="form">
+    <div class="form-row">
+      <label for="pain">Pain (0–10)</label>
+      <input type="range" id="pain" min="0" max="10" step="1">
+      <output id="painVal">0</output>
+    </div>
+    <div class="form-row toggle">
+      <label for="numbness">Numbness</label>
+      <input type="checkbox" id="numbness">
+    </div>
+    <div class="form-row">
+      <label for="stiffness">Stiffness</label>
+      <select id="stiffness">
+        <option>None</option><option>Mild</option><option>Moderate</option><option>Severe</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label for="notes">Notes</label>
+      <textarea id="notes" rows="3" placeholder="Optional details…"></textarea>
+    </div>
+    <div class="sheet-actions">
+      <button type="button" id="cancel" class="secondary">Cancel</button>
+      <button type="submit" class="primary">Save</button>
+    </div>
+  </form>
+</div>
+<script>
+const BodyAreas = ["Hands","Elbows","Shoulders","Knees","Ankles"];
+const TimeSlots = ["Morning","Midday","Evening","Night"];
+
+function fmtDateISO(d){
+  const tz = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - tz*60000);
+  return local.toISOString().slice(0,10);
+}
+function emptyDay(dateISO){
+  const entries = {};
+  BodyAreas.forEach(a => {
+    entries[a] = {};
+    TimeSlots.forEach(t => {
+      entries[a][t] = { pain:0, numbness:false, stiffness:"None", notes:"" };
+    });
+  });
+  return { dateISO, entries };
+}
+function loadAll(){
+  try { return JSON.parse(localStorage.getItem("symptom_logs") || "{}"); }
+  catch(e){ return {}; }
+}
+function saveAll(data){ localStorage.setItem("symptom_logs", JSON.stringify(data)); }
+function getDay(dateISO){
+  const store = loadAll();
+  if(!store[dateISO]){
+    store[dateISO] = emptyDay(dateISO);
+    saveAll(store);
+  }
+  return store[dateISO];
+}
+function setCell(dateISO, area, slot, cell){
+  const store = loadAll();
+  if(!store[dateISO]) store[dateISO] = emptyDay(dateISO);
+  store[dateISO].entries[area][slot] = cell;
+  saveAll(store);
+}
+function csvEscape(s){
+  if(/[",\n]/.test(s)) return "\"" + s.replace(/\"/g, "\\\"") + "\"";
+  return s;
+}
+function exportCSV(dateISO){
+  const day = getDay(dateISO);
+  const rows = ["Area,Time,Pain,Numbness,Stiffness,Notes,Date"];
+  BodyAreas.forEach(area => {
+    TimeSlots.forEach(slot => {
+      const c = day.entries[area][slot];
+      rows.push([area, slot, c.pain, c.numbness ? "Yes" : "No", c.stiffness, csvEscape(c.notes||""), dateISO].join(","));
+    });
+  });
+  const blob = new Blob([rows.join("\n")], {type:"text/csv"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "SymptomGrid_" + dateISO + ".csv";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+const grid = document.getElementById("grid");
+const dateEl = document.getElementById("date");
+const exportBtn = document.getElementById("exportCsv");
+const resetBtn = document.getElementById("resetDay");
+const backdrop = document.getElementById("backdrop");
+const sheet = document.getElementById("sheet");
+const closeSheetBtn = document.getElementById("closeSheet");
+const cancelBtn = document.getElementById("cancel");
+const form = document.getElementById("form");
+const painInput = document.getElementById("pain");
+const painVal = document.getElementById("painVal");
+const numbnessInput = document.getElementById("numbness");
+const stiffnessSelect = document.getElementById("stiffness");
+const notesInput = document.getElementById("notes");
+const sheetTitle = document.getElementById("sheetTitle");
+
+let currentDateISO = fmtDateISO(new Date());
+let editing = null;
+
+function render(){
+  Array.from(grid.children).slice(1).forEach(el => el.remove());
+  const day = getDay(currentDateISO);
+  BodyAreas.forEach(area => {
+    const row = document.createElement("div");
+    row.className = "row";
+
+    const areaCell = document.createElement("div");
+    areaCell.className = "area";
+    areaCell.textContent = area;
+    row.appendChild(areaCell);
+
+    TimeSlots.forEach(slot => {
+      const data = day.entries[area][slot];
+      const wrapper = document.createElement("div");
+      const inner = document.createElement("div");
+      inner.className = "cell tap";
+
+      const line1 = document.createElement("div");
+      line1.className = "line1";
+      const pain = document.createElement("div");
+      pain.textContent = "Pain: " + (data.pain ?? 0);
+      const bolt = document.createElement("div");
+      bolt.textContent = data.numbness ? "⚡" : "";
+      line1.appendChild(pain);
+      line1.appendChild(bolt);
+
+      const stiff = document.createElement("div");
+      stiff.className = "badge";
+      stiff.textContent = data.stiffness || "None";
+
+      const note = document.createElement("div");
+      note.className = "note";
+      note.textContent = data.notes || "";
+
+      inner.appendChild(line1);
+      inner.appendChild(stiff);
+      inner.appendChild(note);
+      inner.addEventListener("click", () => openEditor(area, slot, data));
+
+      wrapper.appendChild(inner);
+      row.appendChild(wrapper);
+    });
+
+    grid.appendChild(row);
+  });
+}
+
+function openEditor(area, slot, data){
+  editing = { area, slot };
+  sheetTitle.textContent = area + " – " + slot;
+  painInput.value = data.pain ?? 0;
+  painVal.textContent = painInput.value;
+  numbnessInput.checked = !!data.numbness;
+  stiffnessSelect.value = data.stiffness || "None";
+  notesInput.value = data.notes || "";
+  backdrop.classList.add("show");
+  sheet.classList.add("show");
+}
+
+function closeEditor(){
+  editing = null;
+  sheet.classList.remove("show");
+  backdrop.classList.remove("show");
+}
+
+painInput.addEventListener("input", () => { painVal.textContent = painInput.value; });
+closeSheetBtn.addEventListener("click", closeEditor);
+cancelBtn.addEventListener("click", closeEditor);
+backdrop.addEventListener("click", closeEditor);
+
+form.addEventListener("submit", (e) => {
+  e.preventDefault();
+  if(!editing) return;
+  const cell = {
+    pain: parseInt(painInput.value,10) || 0,
+    numbness: !!numbnessInput.checked,
+    stiffness: stiffnessSelect.value,
+    notes: (notesInput.value || "").trim()
+  };
+  setCell(currentDateISO, editing.area, editing.slot, cell);
+  closeEditor();
+  render();
+});
+
+dateEl.value = currentDateISO;
+dateEl.addEventListener("change", () => {
+  currentDateISO = dateEl.value || fmtDateISO(new Date());
+  getDay(currentDateISO);
+  render();
+});
+exportBtn.addEventListener("click", () => exportCSV(currentDateISO));
+resetBtn.addEventListener("click", () => {
+  if(confirm("Clear all entries for this day?")){
+    const store = loadAll();
+    store[currentDateISO] = emptyDay(currentDateISO);
+    saveAll(store);
+    render();
+  }
+});
+
+render();
+</script>
+</body>
+</html>
